@@ -7,7 +7,6 @@
  */
 
 const SETTINGS_KEY = 'tarot.settings.v1';
-const JOURNAL_KEY = 'tarot.journal.v1';
 
 const DEFAULTS = {
   useModel: false,
@@ -46,27 +45,3 @@ export function saveSettings(patch) {
   return next;
 }
 
-export function loadJournal() {
-  const entries = read(JOURNAL_KEY, []);
-  return Array.isArray(entries) ? entries : [];
-}
-
-export function saveEntry(entry) {
-  const entries = loadJournal();
-  entries.unshift(entry);
-  // Keep the journal from growing without bound on a phone.
-  write(JOURNAL_KEY, entries.slice(0, 300));
-}
-
-export function updateEntry(id, patch) {
-  const entries = loadJournal().map((e) => (e.id === id ? { ...e, ...patch } : e));
-  write(JOURNAL_KEY, entries);
-}
-
-export function deleteEntry(id) {
-  write(JOURNAL_KEY, loadJournal().filter((e) => e.id !== id));
-}
-
-export function clearJournal() {
-  write(JOURNAL_KEY, []);
-}

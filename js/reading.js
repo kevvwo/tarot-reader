@@ -42,7 +42,10 @@ export const BOOK_LABEL = {
 
 function sentences(text) {
   return String(text || '')
-    .split(/(?<=[.!?])\s+(?=[A-Z“"'])/)
+    // A closing quote or apostrophe can sit between the terminator and the
+    // space ("...the 'unwise man.' To us...") without that being any less
+    // of a sentence boundary.
+    .split(/(?<=[.!?]['"’”]?)\s+(?=[A-Z“"'])/)
     .map((s) => s.trim())
     .filter(Boolean);
 }
@@ -51,12 +54,16 @@ function firstSentences(text, n) {
   return sentences(text).slice(0, n).join(' ');
 }
 
-function trimTo(text, max) {
+export function trimTo(text, max) {
   const clean = String(text || '').replace(/\s+/g, ' ').trim();
   if (clean.length <= max) return clean;
   const cut = clean.slice(0, max);
   const stop = Math.max(cut.lastIndexOf('. '), cut.lastIndexOf('; '));
-  return (stop > max * 0.5 ? cut.slice(0, stop + 1) : `${cut.trimEnd()}…`);
+  if (stop > max * 0.5) return cut.slice(0, stop + 1);
+  // No sentence break in budget — fall back to the last whole word rather
+  // than slicing through the middle of one.
+  const wordStop = cut.lastIndexOf(' ');
+  return `${(wordStop > max * 0.5 ? cut.slice(0, wordStop) : cut).trimEnd()}…`;
 }
 
 const esc = (s) => String(s ?? '').replace(/[&<>"]/g, (c) => (
@@ -87,6 +94,48 @@ export function excerpt(card, book, reversed) {
     default:
       return '';
   }
+}
+
+/**
+ * Merge what the selected books say for a card into one unattributed
+ * passage, rather than picking a single book's quote. Waite and De Laurence
+ * cover almost every card in near-identical Edwardian register, so only one
+ * of them leads; Thierens, when selected, adds one clean sentence rather
+ * than a full second quote. Cuts land on sentence boundaries, not a raw
+ * character count, so nothing trails off mid-word.
+ */
+export function combineExcerpts(card, reversed, books) {
+  const chosen = new Set(books);
+  const bits = [];
+
+  const primaryBook = chosen.has('waite') ? 'waite' : chosen.has('delaurence') ? 'delaurence' : null;
+  if (primaryBook) {
+    const text = excerpt(card, primaryBook, reversed);
+    // firstSentences keeps the cut on a sentence boundary; trimTo is still
+    // applied after as a hard cap, in case a passage never hits one.
+    if (text) bits.push(trimTo(firstSentences(text, 2) || text, 420));
+  }
+  if (chosen.has('thierens')) {
+    const text = excerpt(card, 'thierens', reversed);
+    if (text) bits.push(trimTo(firstSentences(text, 1) || text, 220));
+  }
+
+  return bits.join(' ');
+}
+
+/**
+ * Papus's "divinatory meaning" isn't prose — it's a short block-capital tag
+ * (e.g. "LOVE", "INCONSIDERATE ACTIONS. MADNESS"). Spliced into a flowing
+ * paragraph it reads as a broken sentence, so it's kept separate — a short
+ * tag line alongside the meaning rather than folded into it.
+ */
+export function keywordTag(card, reversed, books) {
+  if (!books.includes('papus')) return '';
+  const text = excerpt(card, 'papus', reversed);
+  if (!text) return '';
+  // Some entries carry more than the tag itself (a parsing gap upstream),
+  // so this stays capped rather than trusting the source to be short.
+  return trimTo(firstSentences(text, 1) || text, 140);
 }
 
 /* ── pattern reading across the whole spread ─────────────────────────────── */
@@ -156,14 +205,11 @@ export function analyze(drawn, byId) {
 
 /* ── offline reading ─────────────────────────────────────────────────────── */
 
-export function composeOffline({ spread, drawn, question, byId, books }) {
+export function composeOffline({ spread, drawn, byId, books }) {
   const usable = books.filter((b) => b !== 'darkforest');
   const parts = [];
 
   parts.push(`<h3>${esc(spread.name)}</h3>`);
-  if (question) {
-    parts.push(`<p><em>You asked:</em> ${esc(question)}</p>`);
-  }
   parts.push(`<p>${esc(spread.blurb)}</p>`);
   parts.push('<hr class="divider">');
 
@@ -171,32 +217,17 @@ export function composeOffline({ spread, drawn, question, byId, books }) {
     const card = byId[slot.id];
     if (!card) return;
     const position = spread.positions[i] || { name: `Card ${i + 1}`, prompt: '' };
-    const orientation = slot.reversed ? 'reversed' : 'upright';
 
     parts.push(`<h4>${esc(position.name)}</h4>`);
     parts.push(`<p><strong>${esc(card.name)}</strong>`
       + `${slot.reversed ? ' <em>· reversed</em>' : ''}`
       + `${position.prompt ? ` — <em>${esc(position.prompt)}</em>` : ''}</p>`);
 
-    // The guidebook's own prose carries the reading.
-    const lead = card.sources?.darkforest?.[orientation] || card[orientation];
-    if (lead && books.includes('darkforest')) {
-      parts.push(`<p>${esc(trimTo(lead, 480))}</p>`);
-    }
+    const meaning = combineExcerpts(card, slot.reversed, usable);
+    if (meaning) parts.push(`<blockquote>${esc(meaning)}</blockquote>`);
 
-    // Then one short corroborating quote from an older book.
-    for (const book of usable) {
-      const text = excerpt(card, book, slot.reversed);
-      if (!text) continue;
-      parts.push(`<blockquote>${esc(trimTo(text, 260))}`
-        + `<span class="cite">${esc(BOOK_LABEL[book])}</span></blockquote>`);
-      break;
-    }
-
-    const keys = slot.reversed ? card.keywords?.reversed : card.keywords?.upright;
-    if (keys?.length) {
-      parts.push(`<p><em>${esc(keys.slice(0, 5).join(' · '))}</em></p>`);
-    }
+    const tag = keywordTag(card, slot.reversed, usable);
+    if (tag) parts.push(`<p><em>${esc(tag)}</em></p>`);
   });
 
   const patterns = analyze(drawn, byId);
@@ -204,17 +235,6 @@ export function composeOffline({ spread, drawn, question, byId, books }) {
     parts.push('<hr class="divider">');
     parts.push('<h4>How the cards talk to each other</h4>');
     parts.push(`<ul>${patterns.notes.map((n) => `<li>${esc(n)}</li>`).join('')}</ul>`);
-  }
-
-  // Close on the last card, which in every spread here is the outcome-ish slot.
-  const last = byId[drawn[drawn.length - 1]?.id];
-  if (last?.advice) {
-    parts.push('<h4>Where that leaves you</h4>');
-    parts.push(`<p>${esc(trimTo(last.advice, 320))}</p>`);
-    if (last.affirmation) {
-      parts.push(`<blockquote>${esc(last.affirmation)}`
-        + `<span class="cite">${esc(last.name)} · affirmation</span></blockquote>`);
-    }
   }
 
   return parts.join('\n');
@@ -243,13 +263,13 @@ const VOICE = {
   },
 };
 
-export function buildMessages({ spread, drawn, question, byId, books, voice = 'warm' }) {
+export function buildMessages({ spread, drawn, byId, books, voice = 'warm' }) {
   const v = VOICE[voice] || VOICE.warm;
   const patterns = analyze(drawn, byId);
 
   const system = [
     'You are a tarot reader. You interpret a spread using ONLY the source',
-    'passages supplied with each card. Those passages come from five books and',
+    'passages supplied with each card. Those passages come from four books and',
     'are the authority: do not substitute meanings you remember from elsewhere,',
     'and do not invent correspondences that are not given.',
     '',
@@ -274,9 +294,7 @@ export function buildMessages({ spread, drawn, question, byId, books, voice = 'w
 
   const lines = [];
   lines.push(`SPREAD: ${spread.name} — ${spread.blurb}`);
-  lines.push(question
-    ? `QUESTION: ${question}`
-    : 'QUESTION: none given; read it as a general "what should I be looking at now".');
+  lines.push('QUESTION: none given; read it as a general "what should I be looking at now".');
   lines.push('');
 
   drawn.forEach((slot, i) => {
@@ -297,9 +315,6 @@ export function buildMessages({ spread, drawn, question, byId, books, voice = 'w
     for (const book of books) {
       const text = excerpt(card, book, slot.reversed);
       if (text) lines.push(`${BOOK_LABEL[book]}: ${trimTo(text, 700)}`);
-    }
-    if (books.includes('darkforest') && card.advice) {
-      lines.push(`ADVICE (Dark Forest): ${trimTo(card.advice, 260)}`);
     }
     lines.push('');
   });
