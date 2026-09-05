@@ -32,12 +32,6 @@
     </header>
 
     <div class="stack">
-      <label class="field">
-        <span class="field-label">Your question <em>optional</em></span>
-        <textarea id="question" rows="2" enterkeyhint="done"
-                  placeholder="What should I be paying attention to right now?"></textarea>
-      </label>
-
       <div class="field">
         <span class="field-label">Spread</span>
         <div class="spreads" id="spread-list" role="radiogroup" aria-label="Spread"></div>
@@ -102,7 +96,6 @@
       <button class="link-btn" id="reading-back">‹ New draw</button>
       <div class="reading-title">
         <h2 id="reading-spread">—</h2>
-        <p id="reading-question" class="reading-question"></p>
       </div>
     </header>
 
@@ -111,7 +104,6 @@
     <div class="reading-body">
       <div class="reading-actions">
         <button class="btn btn-primary" id="btn-interpret">Read the spread</button>
-        <button class="btn" id="btn-save">Save to journal</button>
       </div>
       <article class="prose" id="reading-prose"></article>
     </div>
@@ -125,15 +117,6 @@
     </header>
     <div class="filters" id="library-filters"></div>
     <div class="card-grid" id="library-grid"></div>
-  </section>
-
-  <!-- ── Journal ──────────────────────────────────────────────────────── -->
-  <section class="view" id="view-journal" data-view="journal" hidden>
-    <header class="view-head">
-      <h2>Journal</h2>
-      <p class="sub">Pull in the morning, return in the evening.</p>
-    </header>
-    <div id="journal-list" class="journal-list"></div>
   </section>
 
 </main>
@@ -183,7 +166,6 @@
 
       <h3>About</h3>
       <p class="fine" id="about-text"></p>
-      <button class="btn btn-quiet" id="btn-clear-journal">Clear journal…</button>
     </div>
   </div>
 </div>
@@ -207,7 +189,6 @@
 <nav class="tabs" id="tabs">
   <button data-goto="draw" class="tab is-active"><span class="tab-glyph">✦</span>Draw</button>
   <button data-goto="library" class="tab"><span class="tab-glyph">☰</span>Deck</button>
-  <button data-goto="journal" class="tab"><span class="tab-glyph">✎</span>Journal</button>
   <button data-goto="settings" class="tab"><span class="tab-glyph">⚙</span>Settings</button>
 </nav>
 

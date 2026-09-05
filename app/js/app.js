@@ -4,9 +4,11 @@ import { cardArt, cardBack } from './art.js';
 import { draw } from './deck.js';
 import * as store from './store.js';
 import * as ollama from './ollama.js';
-import { composeOffline, buildMessages, excerpt, BOOK_LABEL } from './reading.js';
 import {
-  $, $$, escapeHtml, renderMarkdown, renderProse, formatDate, tick,
+  composeOffline, buildMessages, combineExcerpts, keywordTag, trimTo, BOOK_LABEL,
+} from './reading.js';
+import {
+  $, $$, escapeHtml, renderMarkdown, renderProse, tick,
 } from './ui.js';
 
 const state = {
@@ -19,7 +21,7 @@ const state = {
   manual: null,    // cards being entered by hand: { spreadId, slots }
   pickIndex: -1,   // which manual slot the picker is filling
   searchKeys: {},  // card id -> lowercase haystack for the picker's search
-  picking: null,   // the face-down fan being tapped through: { spreadId, question, pool, slots }
+  picking: null,   // the face-down fan being tapped through: { spreadId, pool, slots }
 };
 
 const BOOK_ORDER = ['waite', 'delaurence', 'thierens', 'papus'];
@@ -48,7 +50,6 @@ async function boot() {
   renderSpreadList();
   renderLibraryFilters();
   renderLibrary('all');
-  renderJournal();
   wireEvents();
   applySettingsToUi();
 
@@ -138,7 +139,6 @@ function beginPicking() {
   const spread = currentSpread();
   state.picking = {
     spreadId: spread.id,
-    question: $('#question').value.trim(),
     pool: draw(state.corpus.cards, state.corpus.cards.length, state.settings.allowReversed),
     slots: Array.from({ length: spread.count }, () => null),
   };
@@ -211,14 +211,9 @@ function finishPicking(picking) {
   const spread = state.spreads.find((s) => s.id === picking.spreadId) || currentSpread();
 
   state.current = {
-    id: `r${Date.now()}`,
-    createdAt: new Date().toISOString(),
     spreadId: spread.id,
     spreadName: spread.name,
-    question: picking.question,
     drawn: picking.slots,
-    reading: '',
-    note: '',
   };
   state.picking = null;
 
@@ -354,15 +349,10 @@ function readManual() {
   const spread = manualSpread();
 
   state.current = {
-    id: `r${Date.now()}`,
-    createdAt: new Date().toISOString(),
     spreadId: spread.id,
     spreadName: spread.name,
-    question: $('#question').value.trim(),
     drawn: slots.map((s) => ({ id: s.id, reversed: s.reversed })),
     source: 'manual',
-    reading: '',
-    note: '',
   };
 
   renderReading();
@@ -398,8 +388,6 @@ function renderReading() {
     tag.textContent = 'dealt by hand';
     title.append(tag);
   }
-  $('#reading-question').textContent = cur.question ? `“${cur.question}”` : '';
-
   const canvas = $('#spread-canvas');
   canvas.className = `spread-canvas layout-${spread.layout}`;
   canvas.innerHTML = cur.drawn
@@ -413,8 +401,6 @@ function renderReading() {
   const btn = $('#btn-interpret');
   btn.disabled = false;
   btn.textContent = state.settings.useModel ? 'Read the spread' : 'Compose the reading';
-  $('#btn-save').disabled = false;
-  $('#btn-save').textContent = 'Save to journal';
 }
 
 async function interpret() {
@@ -427,12 +413,7 @@ async function interpret() {
 
   // Offline: assemble straight from the corpus.
   if (!state.settings.useModel) {
-    const html = composeOffline({
-      spread, drawn: cur.drawn, question: cur.question, byId: state.byId, books,
-    });
-    prose.innerHTML = html;
-    cur.reading = html;
-    cur.readingKind = 'html';
+    prose.innerHTML = composeOffline({ spread, drawn: cur.drawn, byId: state.byId, books });
     return;
   }
 
@@ -446,8 +427,7 @@ async function interpret() {
   prose.innerHTML = '<p><em>Consulting the books…</em></p>';
 
   const messages = buildMessages({
-    spread, drawn: cur.drawn, question: cur.question,
-    byId: state.byId, books, voice: state.settings.voice,
+    spread, drawn: cur.drawn, byId: state.byId, books, voice: state.settings.voice,
   });
 
   try {
@@ -462,18 +442,12 @@ async function interpret() {
     });
 
     prose.innerHTML = renderMarkdown(text);
-    cur.reading = text;
-    cur.readingKind = 'markdown';
   } catch (err) {
     if (err.name === 'AbortError') return;
-    const fallback = composeOffline({
-      spread, drawn: cur.drawn, question: cur.question, byId: state.byId, books,
-    });
+    const fallback = composeOffline({ spread, drawn: cur.drawn, byId: state.byId, books });
     prose.innerHTML =
       `<p class="cite">${escapeHtml(err.message)} — composed from the books instead.</p>`
       + fallback;
-    cur.reading = fallback;
-    cur.readingKind = 'html';
   } finally {
     prose.classList.remove('streaming');
     btn.disabled = false;
@@ -492,41 +466,17 @@ function detailSection(title, body) {
   return body ? `<h3>${escapeHtml(title)}</h3>${body}` : '';
 }
 
+// One combined description per card, drawn from all four books rather than
+// letting the reader page through four near-duplicate quotes.
 function guideBody(card, reversed) {
-  const life = card.inLife || {};
+  const picture = trimTo(card.picture, 320);
+  const meaning = combineExcerpts(card, reversed, BOOK_ORDER);
+  const tag = keywordTag(card, reversed, BOOK_ORDER);
   return [
-    detailSection('In the picture', renderProse(card.picture)),
-    detailSection('Upright', renderProse(card.upright)),
-    detailSection('Reversed', renderProse(card.reversed)),
-    life.love ? detailSection('In love', `<p>${escapeHtml(life.love)}</p>`) : '',
-    life.work ? detailSection('In work & money', `<p>${escapeHtml(life.work)}</p>`) : '',
-    detailSection('Advice', renderProse(card.advice)),
-    card.reflection ? detailSection('Reflection',
-      `<blockquote>${escapeHtml(card.reflection)}</blockquote>`) : '',
-    card.affirmation ? detailSection('Affirmation',
-      `<blockquote>${escapeHtml(card.affirmation)}</blockquote>`) : '',
-    card.asAPerson ? detailSection('As a person', `<p>${escapeHtml(card.asAPerson)}</p>`) : '',
-    card.timing ? detailSection('Timing', `<p>${escapeHtml(card.timing)}</p>`) : '',
-    card.leans ? detailSection('Yes or no', `<p>${escapeHtml(card.leans)}</p>`) : '',
+    detailSection('In the picture', renderProse(picture)),
+    detailSection(reversed ? 'Reversed' : 'Upright',
+      renderProse(meaning) + (tag ? `<p><em>${escapeHtml(tag)}</em></p>` : '')),
   ].join('');
-}
-
-function bookBody(card, book) {
-  const src = card.sources?.[book];
-  if (!src) return '<p class="fine">This book has nothing for this card.</p>';
-  const bits = [];
-  if (src.description) bits.push(detailSection('Description', renderProse(src.description)));
-  if (src.symbolism) bits.push(detailSection('Symbolism', renderProse(src.symbolism)));
-  if (src.commentary) bits.push(detailSection('Commentary', renderProse(src.commentary)));
-  if (src.attribution) bits.push(detailSection('Attribution', `<p>${escapeHtml(src.attribution)}</p>`));
-  if (src.tradition) bits.push(detailSection('Tradition', renderProse(src.tradition)));
-  if (src.theory) bits.push(detailSection('Theory', renderProse(src.theory)));
-  if (src.conclusion) bits.push(detailSection('Conclusion', renderProse(src.conclusion)));
-  if (src.divinatory) bits.push(detailSection('Divinatory meaning', renderProse(src.divinatory)));
-  if (src.upright) bits.push(detailSection('Divinatory meaning', renderProse(src.upright)));
-  if (src.reversed) bits.push(detailSection('Reversed', renderProse(src.reversed)));
-  if (src.additional) bits.push(detailSection('Additional meanings', renderProse(src.additional)));
-  return bits.join('') || '<p class="fine">This book has nothing for this card.</p>';
 }
 
 function showCard(cardId, reversed = false) {
@@ -539,9 +489,6 @@ function showCard(cardId, reversed = false) {
     card.attribution,
   ].filter(Boolean).join(' · ');
 
-  const keys = reversed ? card.keywords?.reversed : card.keywords?.upright;
-  const books = BOOK_ORDER.filter((b) => card.sources?.[b]);
-
   $('#sheet-scroll').innerHTML = `
     <div class="detail-head">
       <div class="tcard ${reversed ? 'is-reversed' : ''}">${cardArt(card)}</div>
@@ -549,32 +496,9 @@ function showCard(cardId, reversed = false) {
         <h2 id="sheet-title">${escapeHtml(card.name)}</h2>
         <div class="detail-meta">${escapeHtml(meta)}</div>
         ${reversed ? '<div><span class="detail-badge">Reversed</span></div>' : ''}
-        ${keys?.length ? `<ul class="kw">${keys.slice(0, 6)
-          .map((k) => `<li>${escapeHtml(k)}</li>`).join('')}</ul>` : ''}
       </div>
     </div>
-    ${card.hook ? `<p>${escapeHtml(card.hook)}</p>` : ''}
-    <div class="tabbar" id="detail-books">
-      <button class="chip" data-book="guide" aria-pressed="true">Guide</button>
-      ${books.filter((b) => b !== 'darkforest').map((b) => `
-        <button class="chip" data-book="${b}" aria-pressed="false">${escapeHtml(
-          BOOK_LABEL[b].split(',')[0])}</button>`).join('')}
-    </div>
     <div id="detail-body">${guideBody(card, reversed)}</div>`;
-
-  const tabs = $('#detail-books');
-  tabs.onclick = (e) => {
-    const btn = e.target.closest('[data-book]');
-    if (!btn) return;
-    for (const chip of $$('[data-book]', tabs)) {
-      chip.setAttribute('aria-pressed', String(chip === btn));
-    }
-    const book = btn.dataset.book;
-    $('#detail-body').innerHTML = book === 'guide'
-      ? guideBody(card, reversed)
-      : `<p class="source-note">${escapeHtml(BOOK_LABEL[book])}</p>${bookBody(card, book)}`;
-    $('#sheet-scroll').scrollTo({ top: 0, behavior: 'smooth' });
-  };
 
   openSheet('sheet');
 }
@@ -609,58 +533,6 @@ function renderLibrary(filter) {
       <button class="tcard" data-card="${escapeHtml(card.id)}">${cardArt(card)}</button>
       <div class="name">${escapeHtml(card.name)}</div>
     </div>`).join('');
-}
-
-/* ── journal ─────────────────────────────────────────────────────────────── */
-
-function renderJournal() {
-  const entries = store.loadJournal();
-  const list = $('#journal-list');
-
-  if (!entries.length) {
-    list.innerHTML = `<p class="empty">Nothing saved yet.<br>
-      Draw a spread, then tap <strong>Save to journal</strong>.</p>`;
-    return;
-  }
-
-  list.innerHTML = entries.map((entry) => `
-    <article class="journal-entry" data-entry="${escapeHtml(entry.id)}">
-      <header>
-        <h3>${escapeHtml(entry.spreadName || 'Reading')}${
-  entry.source === 'manual' ? '<span class="tag">by hand</span>' : ''}</h3>
-        <time>${escapeHtml(formatDate(entry.createdAt))}</time>
-      </header>
-      ${entry.question ? `<p class="fine">“${escapeHtml(entry.question)}”</p>` : ''}
-      <div class="journal-cards">
-        ${(entry.drawn || []).map((slot) => {
-    const card = state.byId[slot.id];
-    return card ? `<button class="journal-pill ${slot.reversed ? 'rev' : ''}"
-             data-card="${escapeHtml(card.id)}" data-reversed="${slot.reversed ? '1' : ''}"
-             >${escapeHtml(card.name)}${slot.reversed ? ' ⤓' : ''}</button>` : '';
-  }).join('')}
-      </div>
-      <textarea class="journal-note" data-note="${escapeHtml(entry.id)}"
-        placeholder="How did it actually show up?">${escapeHtml(entry.note || '')}</textarea>
-      <div class="journal-tools">
-        ${entry.reading ? `<button class="btn btn-quiet" data-reread="${escapeHtml(entry.id)}">Read again</button>` : ''}
-        <button class="btn btn-quiet" data-delete="${escapeHtml(entry.id)}">Delete</button>
-      </div>
-    </article>`).join('');
-}
-
-function saveCurrentToJournal() {
-  const cur = state.current;
-  if (!cur) return;
-  store.saveEntry({
-    ...cur,
-    // Cap the stored reading so a long journal cannot fill localStorage.
-    reading: String(cur.reading || '').slice(0, 8000),
-  });
-  renderJournal();
-  const btn = $('#btn-save');
-  btn.textContent = 'Saved ✓';
-  btn.disabled = true;
-  tick();
 }
 
 /* ── settings ────────────────────────────────────────────────────────────── */
@@ -754,7 +626,6 @@ function wireEvents() {
     if (btn) chooseCard(btn.dataset.choose);
   });
   $('#btn-interpret').addEventListener('click', interpret);
-  $('#btn-save').addEventListener('click', saveCurrentToJournal);
 
   $('#allow-reversed').addEventListener('change', (e) => {
     state.settings = store.saveSettings({ allowReversed: e.target.checked });
@@ -810,39 +681,6 @@ function wireEvents() {
     // At least one book must stay selected or there is nothing to read from.
     if (!chosen.length) { box.checked = true; return; }
     state.settings = store.saveSettings({ books: chosen });
-  });
-
-  $('#btn-clear-journal').addEventListener('click', () => {
-    if (!confirm('Delete every saved reading? This cannot be undone.')) return;
-    store.clearJournal();
-    renderJournal();
-  });
-
-  $('#journal-list').addEventListener('click', (e) => {
-    const del = e.target.closest('[data-delete]');
-    if (del) {
-      store.deleteEntry(del.dataset.delete);
-      renderJournal();
-      return;
-    }
-    const reread = e.target.closest('[data-reread]');
-    if (reread) {
-      const entry = store.loadJournal().find((x) => x.id === reread.dataset.reread);
-      if (!entry) return;
-      state.current = { ...entry };
-      renderReading();
-      const prose = $('#reading-prose');
-      prose.innerHTML = entry.readingKind === 'markdown'
-        ? renderMarkdown(entry.reading) : entry.reading;
-      $('#btn-save').textContent = 'Saved ✓';
-      $('#btn-save').disabled = true;
-      goto('reading');
-    }
-  });
-
-  $('#journal-list').addEventListener('change', (e) => {
-    const note = e.target.closest('[data-note]');
-    if (note) store.updateEntry(note.dataset.note, { note: note.value });
   });
 }
 
