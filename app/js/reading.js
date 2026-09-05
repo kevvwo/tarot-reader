@@ -111,13 +111,25 @@ export function combineExcerpts(card, reversed, books) {
   const primaryBook = chosen.has('waite') ? 'waite' : chosen.has('delaurence') ? 'delaurence' : null;
   if (primaryBook) {
     const text = excerpt(card, primaryBook, reversed);
-    // firstSentences keeps the cut on a sentence boundary; trimTo is still
-    // applied after as a hard cap, in case a passage never hits one.
-    if (text) bits.push(trimTo(firstSentences(text, 2) || text, 420));
+    // One sentence, not two — Waite and De Laurence favour long
+    // semicolon-chained "sentences" for the divinatory meanings, so even
+    // one is usually a full, substantial thought on its own.
+    if (text) bits.push(trimTo(firstSentences(text, 1) || text, 320));
   }
   if (chosen.has('thierens')) {
     const text = excerpt(card, 'thierens', reversed);
-    if (text) bits.push(trimTo(firstSentences(text, 1) || text, 220));
+    if (text) {
+      // Thierens writes long single sentences (up to ~500 chars in this
+      // corpus) — the cap here is a safety net for a pathological one, not
+      // a target length, so it sits well above the real distribution.
+      const sentence = trimTo(firstSentences(text, 1) || text, 560);
+      // On the rare card where both the primary sentence and this one are
+      // already long, skip this one rather than stack two long sentences
+      // into one oversized paragraph — the primary sentence stands fine
+      // alone.
+      const soFar = bits.reduce((n, b) => n + b.length, 0);
+      if (soFar + sentence.length <= 650) bits.push(sentence);
+    }
   }
 
   return bits.join(' ');
