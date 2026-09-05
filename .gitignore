@@ -1,0 +1,11 @@
+__pycache__/
+*.pyc
+.DS_Store
+node_modules/
+
+# Originals cached by tools/fetch_cards.mjs; app/cards/ is the shipped output.
+.cards-src/
+
+# Raw book sources, incl. the commercial Dark Forest guidebook (see README).
+# Never publish this directory. app/corpus.json is the safe, derived output.
+tarot book resources/

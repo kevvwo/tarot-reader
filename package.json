@@ -1,0 +1,17 @@
+{
+  "name": "tarot-reader",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Draw tarot cards and read them with four books. Installable web app, offline-capable, with optional readings written by a local Ollama model.",
+  "scripts": {
+    "start": "node server.js",
+    "corpus": "python3 tools/build_corpus.py",
+    "cards": "node tools/fetch_cards.mjs",
+    "icons": "node tools/make_icons.js",
+    "test": "node tools/test_app.mjs",
+    "test:e2e": "node tools/test_e2e.mjs"
+  },
+  "engines": {
+    "node": ">=18"
+  }
+}
