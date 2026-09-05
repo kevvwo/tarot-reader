@@ -1,0 +1,230 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover, maximum-scale=1">
+<title>Tarot Reader</title>
+<meta name="description" content="Draw tarot cards and read them with four books.">
+<meta name="theme-color" content="#0b0d14">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-title" content="Tarot">
+<link rel="manifest" href="manifest.webmanifest">
+<link rel="apple-touch-icon" href="icons/icon-180.png">
+<link rel="icon" href="icons/icon.svg" type="image/svg+xml">
+<link rel="stylesheet" href="styles.css">
+</head>
+<body>
+
+<div id="boot" class="boot">
+  <div class="boot-mark" aria-hidden="true">☾</div>
+  <p class="boot-text">Shuffling the deck…</p>
+</div>
+
+<main id="app" hidden>
+
+  <!-- ── Draw ─────────────────────────────────────────────────────────── -->
+  <section class="view" id="view-draw" data-view="draw">
+    <header class="view-head">
+      <h1 class="wordmark">Tarot&nbsp;Reader</h1>
+      <p class="sub">Four books, seventy-eight cards.</p>
+    </header>
+
+    <div class="stack">
+      <label class="field">
+        <span class="field-label">Your question <em>optional</em></span>
+        <textarea id="question" rows="2" enterkeyhint="done"
+                  placeholder="What should I be paying attention to right now?"></textarea>
+      </label>
+
+      <div class="field">
+        <span class="field-label">Spread</span>
+        <div class="spreads" id="spread-list" role="radiogroup" aria-label="Spread"></div>
+      </div>
+
+      <div class="deck-area">
+        <button class="deck" id="deck" aria-label="Shuffle the deck, then choose your cards">
+          <span class="deck-card deck-card-3" aria-hidden="true"></span>
+          <span class="deck-card deck-card-2" aria-hidden="true"></span>
+          <span class="deck-card deck-card-1" aria-hidden="true">
+            <svg viewBox="0 0 60 96" class="deck-back" aria-hidden="true">
+              <use href="#card-back"></use>
+            </svg>
+          </span>
+        </button>
+        <p class="deck-hint" id="deck-hint">Tap the deck, then choose your cards</p>
+        <button class="btn btn-quiet" id="btn-manual">I dealt these cards myself</button>
+      </div>
+
+      <label class="toggle">
+        <input type="checkbox" id="allow-reversed" checked>
+        <span>Include reversed cards</span>
+      </label>
+    </div>
+  </section>
+
+  <!-- ── Choosing your cards ─────────────────────────────────────────── -->
+  <section class="view" id="view-picking" data-view="picking" hidden>
+    <header class="view-head reading-head">
+      <button class="link-btn" id="picking-back">‹ Cancel</button>
+      <div class="reading-title">
+        <h2>Choose your cards</h2>
+        <p class="sub" id="picking-sub"></p>
+      </div>
+    </header>
+
+    <div class="picking-slots" id="picking-slots"></div>
+    <div class="picking-fan" id="picking-fan"></div>
+  </section>
+
+  <!-- ── Cards dealt by hand ──────────────────────────────────────────── -->
+  <section class="view" id="view-manual" data-view="manual" hidden>
+    <header class="view-head reading-head">
+      <button class="link-btn" id="manual-back">‹ New draw</button>
+      <div class="reading-title">
+        <h2>Your cards</h2>
+        <p class="sub" id="manual-sub"></p>
+      </div>
+    </header>
+
+    <div class="manual-slots" id="manual-slots"></div>
+
+    <div class="reading-actions manual-actions">
+      <button class="btn btn-primary" id="btn-manual-read" disabled>Read these cards</button>
+      <button class="btn btn-quiet" id="btn-manual-clear">Clear all</button>
+    </div>
+  </section>
+
+  <!-- ── Reading ──────────────────────────────────────────────────────── -->
+  <section class="view" id="view-reading" data-view="reading" hidden>
+    <header class="view-head reading-head">
+      <button class="link-btn" id="reading-back">‹ New draw</button>
+      <div class="reading-title">
+        <h2 id="reading-spread">—</h2>
+        <p id="reading-question" class="reading-question"></p>
+      </div>
+    </header>
+
+    <div class="spread-canvas" id="spread-canvas"></div>
+
+    <div class="reading-body">
+      <div class="reading-actions">
+        <button class="btn btn-primary" id="btn-interpret">Read the spread</button>
+        <button class="btn" id="btn-save">Save to journal</button>
+      </div>
+      <article class="prose" id="reading-prose"></article>
+    </div>
+  </section>
+
+  <!-- ── Library ──────────────────────────────────────────────────────── -->
+  <section class="view" id="view-library" data-view="library" hidden>
+    <header class="view-head">
+      <h2>The Deck</h2>
+      <p class="sub">All seventy-eight, with every book's reading.</p>
+    </header>
+    <div class="filters" id="library-filters"></div>
+    <div class="card-grid" id="library-grid"></div>
+  </section>
+
+  <!-- ── Journal ──────────────────────────────────────────────────────── -->
+  <section class="view" id="view-journal" data-view="journal" hidden>
+    <header class="view-head">
+      <h2>Journal</h2>
+      <p class="sub">Pull in the morning, return in the evening.</p>
+    </header>
+    <div id="journal-list" class="journal-list"></div>
+  </section>
+
+</main>
+
+<!-- ── Card detail sheet ──────────────────────────────────────────────── -->
+<div class="sheet" id="sheet" hidden>
+  <div class="sheet-scrim" data-close-sheet></div>
+  <div class="sheet-panel" role="dialog" aria-modal="true" aria-labelledby="sheet-title">
+    <div class="sheet-grip" data-close-sheet></div>
+    <div class="sheet-scroll" id="sheet-scroll"></div>
+  </div>
+</div>
+
+<!-- ── Settings sheet ─────────────────────────────────────────────────── -->
+<div class="sheet" id="settings" hidden>
+  <div class="sheet-scrim" data-close-settings></div>
+  <div class="sheet-panel" role="dialog" aria-modal="true" aria-labelledby="settings-title">
+    <div class="sheet-grip" data-close-settings></div>
+    <div class="sheet-scroll">
+      <h2 id="settings-title">Settings</h2>
+
+      <label class="toggle">
+        <input type="checkbox" id="use-model">
+        <span>Write readings with a model<em>Otherwise readings are composed from the books directly.</em></span>
+      </label>
+
+      <label class="field">
+        <span class="field-label">Model</span>
+        <select id="model-select"></select>
+      </label>
+
+      <label class="field">
+        <span class="field-label">Voice</span>
+        <select id="voice-select">
+          <option value="warm">Warm and plain — a friend who knows the cards</option>
+          <option value="classical">Classical — Waite's divinatory register</option>
+          <option value="esoteric">Esoteric — astrology and number</option>
+        </select>
+      </label>
+
+      <div class="field">
+        <span class="field-label">Books used for readings</span>
+        <div class="book-toggles" id="book-toggles"></div>
+      </div>
+
+      <div class="status" id="model-status"></div>
+
+      <h3>About</h3>
+      <p class="fine" id="about-text"></p>
+      <button class="btn btn-quiet" id="btn-clear-journal">Clear journal…</button>
+    </div>
+  </div>
+</div>
+
+<!-- ── Card picker (manual entry) ─────────────────────────────────────── -->
+<div class="sheet" id="picker" hidden>
+  <div class="sheet-scrim" data-close-picker></div>
+  <div class="sheet-panel" role="dialog" aria-modal="true" aria-labelledby="picker-title">
+    <div class="sheet-grip" data-close-picker></div>
+    <div class="picker-head">
+      <h2 id="picker-title">Which card?</h2>
+      <input type="text" id="picker-search" enterkeyhint="search"
+             autocomplete="off" autocapitalize="none" autocorrect="off" spellcheck="false"
+             placeholder="Search — moon, 7 cups, king wands">
+    </div>
+    <div class="sheet-scroll picker-list" id="picker-list"></div>
+  </div>
+</div>
+
+<!-- ── Tab bar ────────────────────────────────────────────────────────── -->
+<nav class="tabs" id="tabs">
+  <button data-goto="draw" class="tab is-active"><span class="tab-glyph">✦</span>Draw</button>
+  <button data-goto="library" class="tab"><span class="tab-glyph">☰</span>Deck</button>
+  <button data-goto="journal" class="tab"><span class="tab-glyph">✎</span>Journal</button>
+  <button data-goto="settings" class="tab"><span class="tab-glyph">⚙</span>Settings</button>
+</nav>
+
+<!-- Shared SVG definitions (card back pattern, suit sigils). -->
+<svg width="0" height="0" style="position:absolute" aria-hidden="true">
+  <defs>
+    <g id="card-back">
+      <rect x="0" y="0" width="60" height="96" rx="5" fill="#141a2b"/>
+      <rect x="3" y="3" width="54" height="90" rx="3" fill="none" stroke="#c8a250" stroke-width="0.6" opacity="0.55"/>
+      <circle cx="30" cy="48" r="13" fill="none" stroke="#c8a250" stroke-width="0.7" opacity="0.75"/>
+      <path d="M30 35a13 13 0 0 0 0 26 10 10 0 0 1 0-26z" fill="#c8a250" opacity="0.85"/>
+      <circle cx="30" cy="22" r="1.4" fill="#c8a250" opacity="0.7"/>
+      <circle cx="30" cy="74" r="1.4" fill="#c8a250" opacity="0.7"/>
+    </g>
+  </defs>
+</svg>
+
+<script type="module" src="js/app.js"></script>
+</body>
+</html>
