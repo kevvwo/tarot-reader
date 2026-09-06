@@ -73,7 +73,9 @@ for (const spread of corpus.spreads) {
   const html = composeOffline({
     spread, drawn, question: 'Should I take the new role?', byId, books,
   });
-  const ok = html.length > 400 && !/undefined|\[object/.test(html)
+  // Floor set below the daily (1-card) spread's true minimum across all 78
+  // cards (335, checked exhaustively) — the other five spreads run 1000+.
+  const ok = html.length > 300 && !/undefined|\[object/.test(html)
     && spread.positions.every((p) => html.includes(escapeHtml(p.name)));
   check(`composeOffline: ${spread.id}`, ok, `${html.length} chars`);
 }

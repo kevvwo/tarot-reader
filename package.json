@@ -7,6 +7,7 @@
     "start": "node server.js",
     "corpus": "python3 tools/build_corpus.py",
     "cards": "node tools/fetch_cards.mjs",
+    "art-prompts": "node tools/generate_art_prompts.mjs",
     "icons": "node tools/make_icons.js",
     "test": "node tools/test_app.mjs",
     "test:e2e": "node tools/test_e2e.mjs"
